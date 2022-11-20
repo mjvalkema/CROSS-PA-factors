@@ -1,11 +1,39 @@
 ## CROSS PA factors analysis
 # Written by M.J. Valkema, November 2022
+
 setwd("/Users/Maartje/repos/CROSS-PA-factors")
 source('CROSS_PA_factors_dataprep.R')
 colors <- c("#4E79A7","#F28E2B", "#E15759", "#76B7B2", "#59A14F", "#EDC948", "#B07AA1") # Tableau colors
 
+# Load packages
+library(tableone) # baseline table
+library(RColorBrewer) # to be used with river plots
+library(riverplot) # river plots
+
+# Load packages for survival
+library(survival) # function coxph
+library(haven)
+library(dplyr)
+library(tableone)
+library(survival)
+library(survminer)
+library(cowplot)
+library(ggplot2)
+library(prodlim)
+library(extrafont)
+library(ggpubr)
+library(lubridate)
+library(splines) # time series
+
+# Script for exporting Cox summaries
+source('makeCoxSum.R') # returns fit_alt
+
+# KM plots
+source('makeKMplot.R')
+gvars <- read.csv(file="data/gvars_UK.csv", header=TRUE, sep = ",", na.strings = "")
+
 ######### Datasets #########
-# data is the entire dataset
+# Data is the entire dataset
 modDataRes <- subset(data, data$resection == "yes") # only patients who underwent resection
 modDataResResidual <- subset(modDataRes, modDataRes$TRG != "TRG1") # for assessment of post-treatment PA factors, which are assessed relative to the residual tumor area
 modDataResResidual$res_diffgrade <- droplevels(modDataResResidual$res_diffgrade, exclude = c("NA, TRG1"))
@@ -24,147 +52,146 @@ range(data$date_last_fu, na.rm=TRUE) # range of last follow-up
 summary(data$potentialFU) # potential follow-up time
 
 # Baseline table
-library(tableone)
 baselineVars <- c("sex", "age", "location", "cT", "cN", "biopsies_diffgrade",
                   "cross_all", "cross_less_ct", "cross_less_rt")
 catVars <- c("sex", "location", "cT", "cN", "biopsies_diffgrade",
               "cross_all", "cross_less_ct")
 tableBl <- CreateTableOne(vars = baselineVars, factorVars = catVars, data = data)
 tableBl <- print(tableBl, nonnormal = c("age", "cross_less_rt"), quote = FALSE, noSpaces = TRUE, digits=NULL)
-write.xlsx(tableBl, "output/Table1.xlsx", showNA=FALSE)
+write.csv(tableBl, "output/Table1.csv", row.names = TRUE, na = "")
 
 # Baseline table split by hospital (Erasmus MC vs Radboud UMC)
 baselineVars <- c("sex", "age", "location", "cT_cat", "cN_cat", "cross_all", "cross_less_ct", "cross_less_rt",
-                   "biopsies_diffgrade", "biopsies_mucous_any", "biopsies_src_any", "biopsies_src_atypical_any", 
+                   "biopsies_diffgrade", "biopsies_mucin_any", "biopsies_src_any", "biopsies_src_atypical_any", 
                   "biopsies_srcpcc_any", "biopsies_rfall_any")
 catVars <- c("sex", "location", "cT_cat", "cN_cat", "cross_all", "cross_less_ct",
-             "biopsies_diffgrade", "biopsies_mucous_any", "biopsies_src_any", "biopsies_src_atypical_any", 
+             "biopsies_diffgrade", "biopsies_mucin_any", "biopsies_src_any", "biopsies_src_atypical_any", 
              "biopsies_srcpcc_any", "biopsies_rfall_any")
 tableBl <- CreateTableOne(vars = baselineVars, factorVars = catVars, strata = "hospital", data = data)
 tableBl <- print(tableBl, nonnormal = c("age", "cross_less_rt"), quote = FALSE, noSpaces = TRUE, digits=NULL)
-write.xlsx(tableBl, "output/Table1Hospital.xlsx", showNA=FALSE)
+write.csv(tableBl, "output/Table1Hospital.csv", row.names = TRUE, na = "")
 
 # Surgery characteristics
 surgVars <- c("surgery", "resection", "specify_no_surgery", "spec_no_surgery_other", "spec_no_res","interval_ncrt_surgery")
 catsurgVars <- c("surgery", "resection", "specify_no_surgery", "spec_no_surgery_other", "specify_no_resection")
 tableSurg <- CreateTableOne(vars = surgVars, factorVars = catsurgVars, data = data)
 tableSurg <- print(tableSurg, nonnormal = c("interval_ncrt_surgery"), quote = FALSE, noSpaces = TRUE) # interval in weeks
-write.xlsx(tableSurg, "output/TableSurgery.xlsx", showNA=FALSE)
+write.csv(tableSurg, "output/TableSurgery.csv", row.names = TRUE, na = "")
 
 # General resection pathology characteristics in all patients
 pathVars <- c( "TRG", "ypT", "ypn", "pCR", "prepT", "prepn", "radicality", "Rmargin")
 tablePA_res <- CreateTableOne(vars = pathVars, factorVars = pathVars, data = modDataRes)
 tablePA_res <- print(tablePA_res, quote = FALSE, noSpaces = TRUE, contDigits=1)
-write.xlsx(tablePA_res, "output/TablePAResection_general.xlsx", showNA=FALSE)
+write.csv(tablePA_res, "output/TablePAResection_general.csv", row.names = TRUE, na = "")
 
 table(modDataRes$radicality, modDataRes$biopsies_diffgrade) # assess tumor differentiation grade for patients with R1 resections
 table(modDataRes$Rmargin, modDataRes$biopsies_diffgrade)
 
 # Baseline pathology characteristics (PA factors)
-pathVars <- c("biopsies_mucous", "biopsies_src", "biopsies_src_atypical", "biopsies_srcpcc", "biopsies_rfall", "biopsies_diff")
+pathVars <- c("biopsies_mucin", "biopsies_src", "biopsies_src_atypical", "biopsies_srcpcc", "biopsies_rfall", "biopsies_diff")
 tablePA_base <- CreateTableOne(vars = pathVars, factorVars = pathVars, data = data)
 tablePA_base <- print(tablePA_base, quote = FALSE, noSpaces = TRUE, contDigits=1)
-write.xlsx(tablePA_base, "output/TableBaselinePAfactors.xlsx", showNA=FALSE)
+write.csv(tablePA_base, "output/TableBaselinePAfactors.csv", row.names = TRUE, na = "")
 
 # Post-treatment pathology characteristics (PA factors)
 modDataRes <- subset(data, data$resection == "yes")
 modDataResResidual <- subset(modDataRes, modDataRes$TRG != "TRG1") 
-pathVars <- c("res_mucous", "res_src", "res_src_atypical", "res_srcpcc", "res_rfall", "res_diff")
+pathVars <- c("res_mucin", "res_src", "res_src_atypical", "res_srcpcc", "res_rfall", "res_diff")
 tablePA_post <- CreateTableOne(vars = pathVars, factorVars = pathVars, data = modDataResResidual)
 tablePA_post <- print(tablePA_post, quote = FALSE, noSpaces = TRUE, contDigits=1)
-write.xlsx(tablePA_post, "output/TablePostPAfactors.xlsx", showNA=FALSE)
+write.csv(tablePA_post, "output/TablePostPAfactors.csv", row.names = TRUE, na = "")
 
 ############ Baseline characteristics split out by outcome ###############
 # All relevant (pathology) characteristics in patients split by PA factor in biopsies (from 1%)
 vars <- c("age", "sex", "biopsies_diffgrade", "cT_cat", "cN_cat", "prepT_cat", "prepN_cat", "resection", "pCR", "TRG", "radicality")
 factors <- c( "sex", "biopsies_diffgrade", "cT_cat", "cN_cat", "prepT_cat", "prepN_cat", "resection", "pCR", "TRG", "radicality")
-tableSplit <- CreateTableOne(vars = vars, factorVars = factors, strata = "biopsies_mucous_any", data = data)
+tableSplit <- CreateTableOne(vars = vars, factorVars = factors, strata = "biopsies_mucin_any", data = data)
 tableSplit <- print(tableSplit, nonnormal = "age", quote = FALSE, noSpaces = TRUE, contDigits=1)
-write.xlsx(tableSplit, "output/TableSplit_biopsy_mucous.xlsx", showNA=FALSE)
+write.csv(tableSplit, "output/TableSplit_biopsy_mucin.csv", row.names = TRUE, na = "")
 
 vars <- c("age", "sex", "biopsies_diffgrade", "cT_cat", "cN_cat", "prepT_cat", "prepN_cat", "resection", "pCR", "TRG", "radicality")
 factors <- c( "sex", "biopsies_diffgrade", "cT_cat", "cN_cat", "prepT_cat", "prepN_cat", "resection", "pCR", "TRG", "radicality")
 tableSplit <- CreateTableOne(vars = vars, factorVars = factors, strata = "biopsies_src_any", data = data)
 tableSplit <- print(tableSplit, nonnormal = "age", quote = FALSE, noSpaces = TRUE, contDigits=1)
-write.xlsx(tableSplit, "output/TableSplit_biopsy_src.xlsx", showNA=FALSE)
+write.csv(tableSplit, "output/TableSplit_biopsy_src.csv", row.names = TRUE, na = "")
 
 vars <- c("age", "sex", "biopsies_diffgrade", "cT_cat", "cN_cat", "prepT_cat", "prepN_cat", "resection", "pCR", "TRG", "radicality")
 factors <- c( "sex", "biopsies_diffgrade", "cT_cat", "cN_cat", "prepT_cat", "prepN_cat", "resection", "pCR", "TRG", "radicality")
 tableSplit <- CreateTableOne(vars = vars, factorVars = factors, strata = "biopsies_src_atypical_any", data = data)
 tableSplit <- print(tableSplit, nonnormal = "age", quote = FALSE, noSpaces = TRUE, contDigits=1)
-write.xlsx(tableSplit, "output/TableSplit_biopsy_src_atypical.xlsx", showNA=FALSE)
+write.csv(tableSplit, "output/TableSplit_biopsy_src_atypical.csv", row.names = TRUE, na = "")
 
 # All relevant (pathology) characteristics in patients split by PA factor in biopsies (from 10%)
 vars <- c("age", "sex", "biopsies_diffgrade", "cT_cat", "cN_cat", "prepT_cat", "prepN_cat", "resection", "pCR", "TRG", "radicality")
 factors <- c( "sex", "biopsies_diffgrade", "cT_cat", "cN_cat", "prepT_cat", "prepN_cat", "resection", "pCR", "TRG", "radicality")
-tableSplit <- CreateTableOne(vars = vars, factorVars = factors, strata = "biopsies_mucous_010", data = data)
+tableSplit <- CreateTableOne(vars = vars, factorVars = factors, strata = "biopsies_mucin_010", data = data)
 tableSplit <- print(tableSplit, nonnormal = "age", quote = FALSE, noSpaces = TRUE, contDigits=1)
-write.xlsx(tableSplit, "output/TableSplit_biopsy_mucous_010.xlsx", showNA=FALSE)
+write.csv(tableSplit, "output/TableSplit_biopsy_mucin_010.csv", row.names = TRUE, na = "")
 
 vars <- c("age", "sex", "biopsies_diffgrade", "cT_cat", "cN_cat", "prepT_cat", "prepN_cat", "resection", "pCR", "TRG", "radicality")
 factors <- c( "sex", "biopsies_diffgrade", "cT_cat", "cN_cat", "prepT_cat", "prepN_cat", "resection", "pCR", "TRG", "radicality")
 tableSplit <- CreateTableOne(vars = vars, factorVars = factors, strata = "biopsies_src_010", data = data)
 tableSplit <- print(tableSplit, nonnormal = "age", quote = FALSE, noSpaces = TRUE, contDigits=1)
-write.xlsx(tableSplit, "output/TableSplit_biopsy_src_010.xlsx", showNA=FALSE)
+write.csv(tableSplit, "output/TableSplit_biopsy_src_010.csv", row.names = TRUE, na = "")
 
 vars <- c("age", "sex", "biopsies_diffgrade", "cT_cat", "cN_cat", "prepT_cat", "prepN_cat", "resection", "pCR", "TRG", "radicality")
 factors <- c( "sex", "biopsies_diffgrade", "cT_cat", "cN_cat", "prepT_cat", "prepN_cat", "resection", "pCR", "TRG", "radicality")
 tableSplit <- CreateTableOne(vars = vars, factorVars = factors, strata = "biopsies_src_atypical_010", data = data)
 tableSplit <- print(tableSplit, nonnormal = "age", quote = FALSE, noSpaces = TRUE, contDigits=1)
-write.xlsx(tableSplit, "output/TableSplit_biopsy_src_atypical_010.xlsx", showNA=FALSE)
+write.csv(tableSplit, "output/TableSplit_biopsy_src_atypical_010.csv", row.names = TRUE, na = "")
 
 # All relevant (pathology) characteristics in patients who underwent resection split by PA factor (from 1%)
 vars <- c("age", "sex", "biopsies_diffgrade", "res_diffgrade", "cT_cat", "cN_cat", "prepT_cat", "prepN_cat", "TRG", "radicality")
 factors <- c( "sex", "biopsies_diffgrade", "res_diffgrade", "cT_cat", "cN_cat", "prepT_cat", "prepN_cat", "TRG", "radicality")
-tableSplit <- CreateTableOne(vars = vars, factorVars = factors, strata = "res_mucous_any", data = modDataResResidual)
+tableSplit <- CreateTableOne(vars = vars, factorVars = factors, strata = "res_mucin_any", data = modDataResResidual)
 tableSplit <- print(tableSplit, nonnormal = "age", quote = FALSE, noSpaces = TRUE, contDigits=1)
-write.xlsx(tableSplit, "output/TableSplit_res_mucous.xlsx", showNA=FALSE)
+write.csv(tableSplit, "output/TableSplit_res_mucin.csv", row.names = TRUE, na = "")
 
 vars <- c("age", "sex", "biopsies_diffgrade", "res_diffgrade", "cT_cat", "cN_cat", "prepT_cat", "prepN_cat", "TRG", "radicality")
 factors <- c( "sex", "biopsies_diffgrade", "res_diffgrade", "cT_cat", "cN_cat", "prepT_cat", "prepN_cat", "TRG", "radicality")
 tableSplit <- CreateTableOne(vars = vars, factorVars = factors, strata = "res_src_any", data = modDataResResidual)
 tableSplit <- print(tableSplit, nonnormal = "age", quote = FALSE, noSpaces = TRUE, contDigits=1)
-write.xlsx(tableSplit, "output/TableSplit_res_src.xlsx", showNA=FALSE)
+write.csv(tableSplit, "output/TableSplit_res_src.csv", row.names = TRUE, na = "")
 
 vars <- c("age", "sex", "biopsies_diffgrade", "res_diffgrade", "cT_cat", "cN_cat", "prepT_cat", "prepN_cat", "TRG", "radicality")
 factors <- c( "sex", "biopsies_diffgrade", "res_diffgrade", "cT_cat", "cN_cat", "prepT_cat", "prepN_cat", "TRG", "radicality")
 tableSplit <- CreateTableOne(vars = vars, factorVars = factors, strata = "res_src_atypical_any", data = modDataResResidual)
 tableSplit <- print(tableSplit, nonnormal = "age", quote = FALSE, noSpaces = TRUE, contDigits=1)
-write.xlsx(tableSplit, "output/TableSplit_res_src_atypical.xlsx", showNA=FALSE)
+write.csv(tableSplit, "output/TableSplit_res_src_atypical.csv", row.names = TRUE, na = "")
 
 # All relevant (pathology) characteristics in patients who underwent resection split by PA factor (from 10%)
 vars <- c("age", "sex", "biopsies_diffgrade", "res_diffgrade", "cT_cat", "cN_cat", "prepT_cat", "prepN_cat", "TRG", "radicality")
 factors <- c( "sex", "biopsies_diffgrade", "res_diffgrade", "cT_cat", "cN_cat", "prepT_cat", "prepN_cat", "TRG", "radicality")
-tableSplit <- CreateTableOne(vars = vars, factorVars = factors, strata = "res_mucous_010", data = modDataResResidual)
+tableSplit <- CreateTableOne(vars = vars, factorVars = factors, strata = "res_mucin_010", data = modDataResResidual)
 tableSplit <- print(tableSplit, nonnormal = "age", quote = FALSE, noSpaces = TRUE, contDigits=1)
-write.xlsx(tableSplit, "output/TableSplit_res_mucous_010.xlsx", showNA=FALSE)
+write.csv(tableSplit, "output/TableSplit_res_mucin_010.csv", row.names = TRUE, na = "")
 
 vars <- c("age", "sex", "biopsies_diffgrade", "res_diffgrade", "cT_cat", "cN_cat", "prepT_cat", "prepN_cat", "TRG", "radicality")
 factors <- c( "sex", "biopsies_diffgrade", "res_diffgrade", "cT_cat", "cN_cat", "prepT_cat", "prepN_cat", "TRG", "radicality")
 tableSplit <- CreateTableOne(vars = vars, factorVars = factors, strata = "res_src_010", data = modDataResResidual)
 tableSplit <- print(tableSplit, nonnormal = "age", quote = FALSE, noSpaces = TRUE, contDigits=1)
-write.xlsx(tableSplit, "output/TableSplit_res_src_010.xlsx", showNA=FALSE)
+write.csv(tableSplit, "output/TableSplit_res_src_010.csv", row.names = TRUE, na = "")
 
 vars <- c("age", "sex", "biopsies_diffgrade", "res_diffgrade", "cT_cat", "cN_cat", "prepT_cat", "prepN_cat", "TRG", "radicality")
 factors <- c( "sex", "biopsies_diffgrade", "res_diffgrade", "cT_cat", "cN_cat", "prepT_cat", "prepN_cat", "TRG", "radicality")
 tableSplit <- CreateTableOne(vars = vars, factorVars = factors, strata = "res_src_atypical_010", data = modDataResResidual)
 tableSplit <- print(tableSplit, nonnormal = "age", quote = FALSE, noSpaces = TRUE, contDigits=1)
-write.xlsx(tableSplit, "output/TableSplit_res_src_atypical_010.xlsx", showNA=FALSE)
+write.csv(tableSplit, "output/TableSplit_res_src_atypical_010.csv", row.names = TRUE, na = "")
 
 # Baseline table split by src_categories (exploratory only)
 vars <- c("age", "sex", "biopsies_diffgrade", "cT_cat", "cN_cat", "prepT_cat", "prepN_cat", "TRG", "radicality")
 factors <- c( "sex", "biopsies_diffgrade", "cT_cat", "cN_cat", "prepT_cat", "prepN_cat", "TRG", "radicality")
 tableSplit <- CreateTableOne(vars = vars, factorVars = factors, strata = "src_categories",  data = data)
 tableSplit <- print(tableSplit, nonnormal = c("age", "cross_less_rt"), quote = FALSE, noSpaces = TRUE, digits=NULL)
-write.xlsx(tableSplit, "output/TableSplit_SRCcategories.xlsx", showNA=FALSE)
+write.csv(tableSplit, "output/TableSplit_SRCcategories.csv", row.names = TRUE, na = "")
 
 ####### Other tables #########
 # Baseline pathology characteristics per TRG category
 modDataRes <- subset(data, data$resection == "yes")
-pathVars <- c("biopsies_mucous", "biopsies_src", "biopsies_src_atypical", "biopsies_srcpcc", "biopsies_rfall", "biopsies_diffgrade")
+pathVars <- c("biopsies_mucin", "biopsies_src", "biopsies_src_atypical", "biopsies_srcpcc", "biopsies_rfall", "biopsies_diffgrade")
 tablePA_base <- CreateTableOne(vars = pathVars, factorVars = pathVars, strata = "TRG", data = modDataRes)
 tablePA_base <- print(tablePA_base, quote = FALSE, noSpaces = TRUE, contDigits=1)
-write.xlsx(tablePA_base, "output/TableBaselinePA_perTRG.xlsx", showNA=FALSE)
+write.csv(tablePA_base, "output/TableBaselinePA_perTRG.csv", row.names = TRUE, na = "")
 
 # Baseline table for patients with SRC spit by pCR yes or no, to investigate whether some patients with SRC and good response have different baseline characteristics
 # This is exploratory only
@@ -175,35 +202,35 @@ catVars <- c("sex", "location", "cT_cat", "cN_cat", "prepT_cat", "prepN_cat", "b
              "hospital", "cross_all", "cross_less_ct")
 tableSRC <- CreateTableOne(vars = baselineVars, factorVars = catVars, strata = "pCR",  data = modDataSRC)
 tableSRC <- print(tableSRC, nonnormal = c("age", "cross_less_rt"), quote = FALSE, noSpaces = TRUE, digits=NULL)
-write.xlsx(tableSRC, "output/TableSRC_pCR.xlsx", showNA=FALSE)
+write.csv(tableSRC, "output/TableSRC_pCR.csv", row.names = TRUE, na = "")
 
 # All relevant pathology characteristics in patients who underwent resection (TRG-1-2-3-4) split by pCR
 # This is exploratory only
-pathVars <- c("biopsies_mucous", "biopsies_src", "biopsies_src_atypical", "biopsies_rfall", "biopsies_diffgrade",
-              "biopsies_mucous_any", "biopsies_src_any", "biopsies_src_atypical_any", "biopsies_rfall_any", 
+pathVars <- c("biopsies_mucin", "biopsies_src", "biopsies_src_atypical", "biopsies_rfall", "biopsies_diffgrade",
+              "biopsies_mucin_any", "biopsies_src_any", "biopsies_src_atypical_any", "biopsies_rfall_any", 
               "TRG", "ypT", "ypn", "pCR", "prepT", "prepn", "radicality")
 tablePA_res <- CreateTableOne(vars = pathVars, factorVars = pathVars, strata = "pCR", data = modDataRes)
 tablePA_res <- print(tablePA_res, quote = FALSE, noSpaces = TRUE, contDigits=1)
-write.xlsx(tablePA_res, "output/TablePAResectionTRGall_pCR.xlsx", showNA=FALSE)
+write.csv(tablePA_res, "output/TablePAResectionTRGall_pCR.csv", row.names = TRUE, na = "")
 
 # All relevant pathology characteristics in patients who underwent resection (TRG-1-2-3-4) split by TRG1-2 vs TRG3-4
 # This is exploratory only
-pathVars <- c("biopsies_mucous", "biopsies_src", "biopsies_src_atypical", "biopsies_rfall", "biopsies_diff",
-              "biopsies_mucous_any", "biopsies_src_any", "biopsies_src_atypical_any", "biopsies_rfall_any", 
+pathVars <- c("biopsies_mucin", "biopsies_src", "biopsies_src_atypical", "biopsies_rfall", "biopsies_diff",
+              "biopsies_mucin_any", "biopsies_src_any", "biopsies_src_atypical_any", "biopsies_rfall_any", 
               "TRG", "ypT", "ypn", "pCR", "prepT", "prepn", "radicality")
 tablePA_res <- CreateTableOne(vars = pathVars, factorVars = pathVars, strata = "TRG_cat", data = modDataRes)
 tablePA_res <- print(tablePA_res, quote = FALSE, noSpaces = TRUE, contDigits=1)
-write.xlsx(tablePA_res, "output/TablePAResectionTRGall_TRG12vs34.xlsx", showNA=FALSE)
+write.csv(tablePA_res, "output/TablePAResectionTRGall_TRG12vs34.csv", row.names = TRUE, na = "")
 
 
 ######### Comparison pre-treatment and post-treatment PA factors #########
 rm(edges)
 
 #########  Do patients change category? For patients with resection and residual tumor TRG 2-3-4 ######### 
-edges <- modDataResResidual[, c("biopsies_mucous", "res_mucous")]
+edges <- modDataResResidual[, c("biopsies_mucin", "res_mucin")]
 # this gives the count of all group changes
 edges <- edges %>%
-  group_by(biopsies_mucous, res_mucous) %>%
+  group_by(biopsies_mucin, res_mucin) %>%
   summarise(Value = n())
 
 edges <- modDataResResidual[, c("biopsies_diffgrade", "res_diffgrade")]
@@ -250,8 +277,6 @@ nodes <- data.frame(ID = outer(categories, c("_start", "_end"), FUN = "paste0")[
 edges$N1 <- paste0(edges$N1, "_start") # only do once
 edges$N2 <- paste0(edges$N2, "_end") # only do once
 
-library(RColorBrewer)
-library(riverplot)
 #palette = paste0(brewer.pal(4, "Set1"), "90") other palette
 styles <- lapply(nodes$y, function(n) {
   list(col = colors[n], lty = 0, textcol = "black") # if you use n+1 you can loop through colors
@@ -265,7 +290,7 @@ r <- makeRiver(nodes=nodes, edges=edges,
 r <- makeRiver(nodes=nodes, edges=edges, 
                styles = styles, node_labels = c("good-moderate", "poor"))
 
-png(filename = "figures/FigRPmucous.png", units = "cm", width=20, height=30, res=300) # keep these sizes
+png(filename = "figures/FigRPmucin.png", units = "cm", width=20, height=30, res=300) # keep these sizes
 plot(r)
 dev.off()
 
@@ -307,14 +332,13 @@ table(modData$biopsies_diffgrade, modData$pCR)
 table(modDataRes$biopsies_src_any, modDataRes$pCR)
 
 # PA factors
-# extracellular mucous in biopsy
-source('makeCoxSum.R')
-fit_null <- glm(TRG_T4b_cat ~ biopsies_mucous_any + age + sex + cT_cat + cN_cat, data = modData, family = binomial())
-fit_alt <- glm(TRG_T4b_cat ~ biopsies_mucous_any + biopsies_diffgrade + age + sex + cT_cat + cN_cat, data = modData, family = binomial())
+# extracellular mucin in biopsy
+fit_null <- glm(TRG_T4b_cat ~ biopsies_mucin_any + age + sex + cT_cat + cN_cat, data = modData, family = binomial())
+fit_alt <- glm(TRG_T4b_cat ~ biopsies_mucin_any + biopsies_diffgrade + age + sex + cT_cat + cN_cat, data = modData, family = binomial())
 makeLRSum(fit_null, fit_alt)
 
-fit_null <- glm(TRG_T4b_cat ~ biopsies_mucous_010 + age + sex + cT_cat + cN_cat, data = modData, family = binomial())
-fit_alt <- glm(TRG_T4b_cat ~ biopsies_mucous_010 + biopsies_diffgrade + age + sex + cT_cat + cN_cat, data = modData, family = binomial())
+fit_null <- glm(TRG_T4b_cat ~ biopsies_mucin_010 + age + sex + cT_cat + cN_cat, data = modData, family = binomial())
+fit_alt <- glm(TRG_T4b_cat ~ biopsies_mucin_010 + biopsies_diffgrade + age + sex + cT_cat + cN_cat, data = modData, family = binomial())
 makeLRSum(fit_null, fit_alt)
 
 # src
@@ -354,21 +378,7 @@ fit_alt <- glm(TRG_T4b_cat ~ biopsies_rfall_010 + biopsies_diffgrade + age + sex
 makeLRSum(fit_null, fit_alt)
 
 ######### Survival analyses ######### 
-#Loading packages
-library(survival) # function coxph
-library(haven)
-library(dplyr)
-library(tableone)
-library(survival)
-library(survminer)
-library(cowplot)
-library(ggplot2)
-library(prodlim)
-library(extrafont) # useful??
-library(ggpubr)
-library(lubridate)
-        
-######### Check survival times #########
+# Check survival times
 # Plot distribution OS and DFS in months
 hist(data$tvar, breaks = 20)
 hist(data$dfsvar, breaks = 20)
@@ -399,9 +409,9 @@ logrank
 KM_fit <- survfit(Surv(tvar, status == 1) ~ biopsies_diffgrade, data = data)
 plot(KM_fit, fun = "cumhaz")
 
-logrank <- survdiff(Surv(tvar, status == 1) ~ biopsies_mucous_any, data = data)
+logrank <- survdiff(Surv(tvar, status == 1) ~ biopsies_mucin_any, data = data)
 logrank
-KM_fit <- survfit(Surv(tvar, status == 1) ~ biopsies_mucous_any, data = data)
+KM_fit <- survfit(Surv(tvar, status == 1) ~ biopsies_mucin_any, data = data)
 plot(KM_fit, fun = "cumhaz")
 
 logrank <- survdiff(Surv(tvar, status == 1) ~ biopsies_src_any, data = data)
@@ -430,9 +440,9 @@ logrank
 KM_fit <- survfit(Surv(tvar, status == 1) ~ res_diffgrade, data = modDataResResidual)
 plot(KM_fit, fun = "cumhaz")
 
-logrank <- survdiff(Surv(tvar, status == 1) ~ res_mucous_any, data = modDataResResidual)
+logrank <- survdiff(Surv(tvar, status == 1) ~ res_mucin_any, data = modDataResResidual)
 logrank
-KM_fit <- survfit(Surv(tvar, status == 1) ~ res_mucous_any, data = modDataResResidual)
+KM_fit <- survfit(Surv(tvar, status == 1) ~ res_mucin_any, data = modDataResResidual)
 plot(KM_fit, fun = "cumhaz")
 
 logrank <- survdiff(Surv(tvar, status == 1) ~ res_src_any, data = modDataResResidual)
@@ -483,11 +493,12 @@ subdata2$TRG_changeN <- as.factor(paste(subdata2$TRG, subdata2$prepN_cat, subdat
 
 subdata3 <- subset(data, (data$biopsies_diffgrade == "1")) # only G3 tumors
 
-## Choose the grouping variable
-source('makeKMplot.R')
+## Make some plots separately
+# use when saving a plot
 #png(filename = "figures/FigKM_OS_ .png", units = "cm", width=25, height=15, res=300) # keep these sizes
 
 #Explorative plots
+# Patients with SRCs in resection specimen: with and without residual Barrett
 fit <- makeKMplot(data = dataBarrett, 
                   timevar = 'tvar', 
                   eventvar = 'status', 
@@ -496,8 +507,11 @@ fit <- makeKMplot(data = dataBarrett,
                   gvartitle = 'Signet-ring cells: patients with Barrett vs no Barrett',
                   #grouplabels = c("<1%", "≥1%") # c("absent/present", "present/absent", "present/present", "absent/absent")
 ) #for grouplabels choose NA if you want the function to use levels(groupingvar)
+#dev.off()
 
-
+# Combination pCR and differentiation grade
+# Drop unused levels
+modDataRes$pCR_diffgrade <- droplevels(modDataRes$pCR_diffgrade)
 fit <- makeKMplot(data = modDataRes, 
                   timevar = 'tvar', 
                   eventvar = 'status', 
@@ -508,6 +522,7 @@ fit <- makeKMplot(data = modDataRes,
                   ) #for grouplabels choose NA if you want the function to use levels(groupingvar)
 #dev.off()
 
+# SRC in biopsies only for patients undergoing surgery
 fit <- makeKMplot(data = modDataRes, 
                   timevar = 'tvar', 
                   eventvar = 'status', 
@@ -518,24 +533,17 @@ fit <- makeKMplot(data = modDataRes,
 ) #for grouplabels choose NA if you want the function to use levels(groupingvar)
 #dev.off()
 
-# Key Image: signet-ring cells in resection specimen
-fit <- makeKMplot(data = modDataResResidual, 
-                  timevar = 'tvar', 
-                  eventvar = 'status', 
-                  groupingvar = 'res_src_any', 
-                  titl = 'Overall survival in patients undergoing resection with residual tumor (n = 231)', 
-                  gvartitle = 'signet-ring cells in resection specimen',
-                  grouplabels = c("<1%", "≥1%") # c("absent/present", "present/absent", "present/present", "absent/absent")
-) #for grouplabels choose NA if you want the function to use levels(groupingvar)
-
 # Key Image: signet-ring cells pre/post-treatment
+# Supplemental Figure 2
+png(filename = "figures/FigKM_OS_SRCs_pre_vs_post.png", units = "cm", width=25, height=15, res=1200) # keep these sizes
 fit <- makeKMplot(data = modDataRes, 
                   timevar = 'tvar', 
                   eventvar = 'status', 
                   groupingvar = 'src_categories',
                   titl = 'Overall survival in patients undergoing resection (n = 284)', 
-                  gvartitle = 'signet-ring cells pre/post-treatment'
+                  gvartitle = 'signet-ring cells pre- and post-treatment'
 ) #for grouplabels choose NA if you want the function to use levels(groupingvar)
+dev.off()
 
 # Key Image: poorly cohesive cells cells pre/post-treatment
 fit <- makeKMplot(data = modDataRes, 
@@ -543,7 +551,7 @@ fit <- makeKMplot(data = modDataRes,
                   eventvar = 'status', 
                   groupingvar = 'pcc_categories',
                   titl = 'Overall survival in patients undergoing resection (n = 284)', 
-                  gvartitle = 'poorly cohesive cells pre/post-treatment'
+                  gvartitle = 'poorly cohesive cells pre- and post-treatment'
 ) #for grouplabels choose NA if you want the function to use levels(groupingvar)
 
 # Key Image: any signet-ring cells + poorly cohesive cells pre/post-treatment
@@ -552,12 +560,10 @@ fit <- makeKMplot(data = modDataRes,
                   eventvar = 'status', 
                   groupingvar = 'srcpcc_categories', 
                   titl = 'Overall survival in patients undergoing resection (n = 284)', 
-                  gvartitle = 'signet-ring cells + poorly cohesive cells pre/post-treatment'
+                  gvartitle = 'signet-ring cells + poorly cohesive cells pre- and post-treatment'
 ) #for grouplabels choose NA if you want the function to use levels(groupingvar)
 
 # Make all plots at once
-source('makeKMplot.R')
-gvars <- read.csv(file="data/gvars.csv", header=TRUE, sep = ",", na.strings = "")
 gvars$grouplabels <- sapply(gvars$grouplabels, gsub, pattern = ">0%", replacement = "≥1%")
 fit_list_os <- list()
 fit_list_dfs <- list()
@@ -634,7 +640,7 @@ temp$id <- gvars$groupingvar
 metricsDFS <- merge(medianDFS, temp)
 
 metricsOS_DFS <- merge(metricsOS, metricsDFS)
-write.xlsx(metricsOS_DFS, "output/TableMedian_OS_DFS.xlsx", showNA=FALSE)
+write.csv(metricsOS_DFS, "output/TableMedian_OS_DFS.csv", row.names = TRUE, na = "")
 
 #------------------ Cox regression - models with PA factors ---------------------------- 
 ## Choose outcome
@@ -649,14 +655,11 @@ tvar <- sdat$dfsvar  #time variable
 evar <- sdat$dfstatus #event variable
 
 #### Pre-treatment Cox models ####
-# Export Cox summaries
-source('makeCoxSum.R') # returns fit_alt
-
 # Reference model with differentiation grade
 fit_null <- coxph(Surv(tvar, evar) ~ biopsies_diffgrade + age + sex + cT_cat + cN_cat, data = sdat) 
 #fit_alt <- coxph(Surv(tvar, evar) ~ age + sex + prepT_cat + prepN_cat + biopsies_diffgrade, data = sdat) 
 fit_alt <- coxph(Surv(tvar, evar) ~ biopsies_diffgrade*sex + age + cT_cat + cN_cat, data = sdat) # interaction term
-library(splines)
+
 fit_alt <- coxph(Surv(tvar, evar) ~ biopsies_diffgrade + ns(age, 3) + sex + cT_cat + cN_cat, data = sdat) # non-linear effect age
 summary(fit_null)
 summary(fit_alt)
@@ -669,11 +672,11 @@ cox.zph(fit_null)
 plot(cox.zph(fit_null))
 
 # Extracellular mucine, test for the effect of differentiation grade
-fit_null <- coxph(Surv(tvar, evar) ~ biopsies_mucous_any + age + sex + cT_cat + cN_cat, data = sdat) # without diff grade
-fit_alt <- coxph(Surv(tvar, evar) ~ biopsies_mucous_any + biopsies_diffgrade + age + sex + cT_cat + cN_cat, data = sdat) # with diff grade
+fit_null <- coxph(Surv(tvar, evar) ~ biopsies_mucin_any + age + sex + cT_cat + cN_cat, data = sdat) # without diff grade
+fit_alt <- coxph(Surv(tvar, evar) ~ biopsies_mucin_any + biopsies_diffgrade + age + sex + cT_cat + cN_cat, data = sdat) # with diff grade
 
-fit_null <- coxph(Surv(tvar, evar) ~ biopsies_mucous_010 + age + sex + cT_cat + cN_cat, data = sdat) # without diff grade
-fit_alt <- coxph(Surv(tvar, evar) ~ biopsies_mucous_010 + biopsies_diffgrade + age + sex + cT_cat + cN_cat, data = sdat) # with diff grade
+fit_null <- coxph(Surv(tvar, evar) ~ biopsies_mucin_010 + age + sex + cT_cat + cN_cat, data = sdat) # without diff grade
+fit_alt <- coxph(Surv(tvar, evar) ~ biopsies_mucin_010 + biopsies_diffgrade + age + sex + cT_cat + cN_cat, data = sdat) # with diff grade
 
 makeCoxSum(fit_null, fit_alt)
 plot(cox.zph(fit_alt))
@@ -752,12 +755,12 @@ makeCoxSum(fit_null, fit_alt)
 plot(cox.zph(fit_null))
 cox.zph(fit_null)
 
-# extracellular mucous
-fit_null <- coxph(Surv(tvar, evar) ~ res_mucous_any + age + sex + prepT_cat + prepN_cat + ypT_cat + ypN_cat + TRG_cat + radicality, data = sdat) # without diff grade
-fit_alt <- coxph(Surv(tvar, evar) ~ res_mucous_any + biopsies_diffgrade + age + sex + prepT_cat + prepN_cat + ypT_cat + ypN_cat + TRG_cat + radicality, data = sdat) # with diff grade
+# extracellular mucin
+fit_null <- coxph(Surv(tvar, evar) ~ res_mucin_any + age + sex + prepT_cat + prepN_cat + ypT_cat + ypN_cat + TRG_cat + radicality, data = sdat) # without diff grade
+fit_alt <- coxph(Surv(tvar, evar) ~ res_mucin_any + biopsies_diffgrade + age + sex + prepT_cat + prepN_cat + ypT_cat + ypN_cat + TRG_cat + radicality, data = sdat) # with diff grade
 
-fit_null <- coxph(Surv(tvar, evar) ~ res_mucous_010 + age + sex + prepT_cat + prepN_cat + ypT_cat + ypN_cat + TRG_cat + radicality, data = sdat) # without diff grade
-fit_alt <- coxph(Surv(tvar, evar) ~ res_mucous_010 + biopsies_diffgrade + age + sex + prepT_cat + prepN_cat + ypT_cat + ypN_cat + TRG_cat + radicality, data = sdat) # with diff grade
+fit_null <- coxph(Surv(tvar, evar) ~ res_mucin_010 + age + sex + prepT_cat + prepN_cat + ypT_cat + ypN_cat + TRG_cat + radicality, data = sdat) # without diff grade
+fit_alt <- coxph(Surv(tvar, evar) ~ res_mucin_010 + biopsies_diffgrade + age + sex + prepT_cat + prepN_cat + ypT_cat + ypN_cat + TRG_cat + radicality, data = sdat) # with diff grade
 
 makeCoxSum(fit_null, fit_alt)
 plot(cox.zph(fit_alt))

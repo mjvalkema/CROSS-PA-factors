@@ -4,6 +4,8 @@
 /figures_old
 /figures_withoutP
 /output
+/figures_AnnSurg
+/output_AnnSurg
 
 .DS_Store
 .ipynb_checkpoints/

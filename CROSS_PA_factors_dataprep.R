@@ -1,4 +1,5 @@
 # Script analysis CROSS PA factors
+# M.J. Valkema, November 2022
 library(dplyr) # function coalesce
 library(lubridate) # date difference
 
@@ -14,6 +15,13 @@ data$end_ncrt <- as.Date(data$end_ncrt, "%d-%m-%Y")
 data$date_death <- as.Date(data$date_death, "%d-%m-%Y")
 data$date_last_fu <- as.Date(data$date_last_fu, "%d-%m-%Y")
 data$date_recurrence <- as.Date(data$date_recurrence, "%d-%m-%Y")
+
+# Change colnames
+names(data)[names(data) == "biopsies_mucous"] <- "biopsies_mucin"
+names(data)[names(data) == "biopsies_mucous_other"] <- "biopsies_mucin_other"
+names(data)[names(data) == "res_mucous"] <- "res_mucin"
+names(data)[names(data) == "res_mucous_other"] <- "res_mucin_other"
+
 
 # Re-code variables
 library(car)
@@ -112,10 +120,10 @@ data$biopsies_src_atypical <- car::recode(data$biopsies_src_atypical, "c('88')='
 # Separate risk factors
 
 # Comparison before and after treatment in patients who underwent resection with numeric variables
-data$biopsies_mucous_num <- data$biopsies_mucous
+data$biopsies_mucin_num <- data$biopsies_mucin
 data$biopsies_src_num <- data$biopsies_src
 data$biopsies_src_atypical_num <- data$biopsies_src_atypical
-data$res_mucous_num <- data$res_mucous
+data$res_mucin_num <- data$res_mucin
 data$res_src_num <- data$res_src
 data$res_src_atypical_num <- data$res_src_atypical
 
@@ -148,7 +156,7 @@ data$biopsies_srcpcc <- as.factor(car::recode(data$biopsies_srcpcc_sum, "c('0')=
                    c('3')='51-100%'"))
 
 # Define overall risk factor based on the max in each of the categories for every patient
-data$biopsies_rfall <- apply(data[, c('biopsies_mucous', 'biopsies_src', 'biopsies_src_atypical')], MARGIN=1, max)
+data$biopsies_rfall <- apply(data[, c('biopsies_mucin', 'biopsies_src', 'biopsies_src_atypical')], MARGIN=1, max)
 data$biopsies_rfall_any <- as.factor(car::recode(data$biopsies_rfall, "c('0')='0'; c('1', '2', '3')='1'"))
 data$biopsies_rfall_010 <- as.factor(car::recode(data$biopsies_rfall, "c('0', '1')='0'; c('2', '3')='1'"))
 data$biopsies_rfall <- as.factor(car::recode(data$biopsies_rfall, "c('0')='<1%'; 
@@ -156,9 +164,9 @@ data$biopsies_rfall <- as.factor(car::recode(data$biopsies_rfall, "c('0')='<1%';
                    c('2')='11-50%'; 
                    c('3')='51-100%'"))
 
-data$biopsies_mucous_any <- as.factor(car::recode(data$biopsies_mucous, "c('0')='0'; c('1', '2', '3')='1'"))
-data$biopsies_mucous_010 <- as.factor(car::recode(data$biopsies_mucous, "c('0', '1')='0'; c('2', '3')='1'"))
-data$biopsies_mucous <- as.factor(car::recode(data$biopsies_mucous, "c('0')='<1%'; 
+data$biopsies_mucin_any <- as.factor(car::recode(data$biopsies_mucin, "c('0')='0'; c('1', '2', '3')='1'"))
+data$biopsies_mucin_010 <- as.factor(car::recode(data$biopsies_mucin, "c('0', '1')='0'; c('2', '3')='1'"))
+data$biopsies_mucin <- as.factor(car::recode(data$biopsies_mucin, "c('0')='<1%'; 
                    c('1')='1-10%'; 
                    c('2')='11-50%'; 
                    c('3')='51-100%'"))
@@ -189,7 +197,7 @@ data$pCR_diffgrade <- as.factor(car::recode(data$pCR_diffgrade, "c('0 0')='non-p
 
 # Re-code scores for resection specimen
 # Define overall risk factor based on the max in each of the categories for every patient
-data$res_rfall <- apply(data[, c('res_mucous', 'res_src', 'res_src_atypical')], MARGIN=1, max)
+data$res_rfall <- apply(data[, c('res_mucin', 'res_src', 'res_src_atypical')], MARGIN=1, max)
 data$res_rfall <- as.factor(car::recode(data$res_rfall, "c('88')='0'")) # patient with TRG1 get lowest category
 data$res_rfall_any <- as.factor(car::recode(data$res_rfall, "c('0')='0'; c('1', '2', '3')='1'"))
 data$res_rfall_010 <- as.factor(car::recode(data$res_rfall, "c('0', '1')='0'; c('2', '3')='1'"))
@@ -222,10 +230,10 @@ data$res_srcpcc <- as.factor(car::recode(data$res_srcpcc_sum, "c('0')='<1%';
                    c('2')='11-50%'; 
                    c('3')='51-100%'"))
 
-data$res_mucous <- ifelse(data$trg == '1', '88', data$res_mucous) # patients with TRG 1 get assigned "other -> 0% category"
-data$res_mucous_any <- as.factor(car::recode(data$res_mucous, "c('0', '88')='0'; c('1', '2', '3')='1'"))
-data$res_mucous_010 <- as.factor(car::recode(data$res_mucous, "c('0', '88', '1')='0'; c('2', '3')='1'"))
-data$res_mucous <- as.factor(car::recode(data$res_mucous, "c('0', '88')='<1%'; 
+data$res_mucin <- ifelse(data$trg == '1', '88', data$res_mucin) # patients with TRG 1 get assigned "other -> 0% category"
+data$res_mucin_any <- as.factor(car::recode(data$res_mucin, "c('0', '88')='0'; c('1', '2', '3')='1'"))
+data$res_mucin_010 <- as.factor(car::recode(data$res_mucin, "c('0', '88', '1')='0'; c('2', '3')='1'"))
+data$res_mucin <- as.factor(car::recode(data$res_mucin, "c('0', '88')='<1%'; 
                    c('1')='1-10%'; 
                    c('2')='11-50%'; 
                    c('3')='51-100%'")) # There is one of "other" which was TRG1
@@ -293,5 +301,4 @@ data$dfsvar <- data$dfsvar / (365/12) # convert disease-free survival days to mo
 
 data$potentialFU <- lubridate::interval(data$date_diagnosis, as.Date("15-07-2022", format = '%d-%m-%Y')) %/% months(1)
 
-library("xlsx")
-write.xlsx(data, "output/dataClean.xlsx", showNA=FALSE)
+write.csv(data, "output/dataClean.csv", row.names = TRUE, na = "")

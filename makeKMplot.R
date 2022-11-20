@@ -30,7 +30,7 @@ makeKMplot <- function(data, timevar, eventvar, groupingvar, titl, gvartitle, gr
   ylab <- "Percentage of patients"
   gvar <- droplevels(gvar, exclude = c("other", "88", "<NA>", "NA", "na", NA))
   legend.title <- gvartitle
-  if (is.na(grouplabels)) {
+  if (is.na(grouplabels[1])) {
     kmgroups <- levels(gvar)
   } else {
     kmgroups <- grouplabels
@@ -58,25 +58,25 @@ makeKMplot <- function(data, timevar, eventvar, groupingvar, titl, gvartitle, gr
                    pval = TRUE, #"display p value, state TRUE, FALSE or "chosen text"
                    ylab=ylab, #name y axis lable
                    size=1,
-                   font.tickslab = c(15, "plain", "Black"), #font x and y lable numbers
+                   font.tickslab = c(15, "plain", "Black"), #font x and y label numbers
                    risk.table=TRUE, fontsize = 5, #Display risk table
                    conf.int = FALSE, #show confidence interval
                    surv.median.line = "hv",# add median line
-                   censor.shape=73, #shape censore lines
-                   censor.size=2, #size senzor lines
-                   xlim=c(0,60), #min and max dsiplayed on X axis
+                   censor.shape=73, #shape censor lines
+                   censor.size=2, #size censor lines
+                   xlim=c(0,60), #min and max displayed on X axis
                    break.x.by=6, #intervals displayed on x interval
                    axes.offset=TRUE, ##small indent x and y axis
                    risk.table.title= "Numbers at risk" ,#title risk table
-                   risk.table.y.text= FALSE, #show colour with/without text in group lables 
+                   risk.table.y.text= FALSE, #show colour with/without text in group labels 
                    tables.height=0.2, #height of table (handy when many groups)
                    tables.theme=theme_cleantable()) #overall theme of ggplot risk table
   
-  km$table <- km$table + theme(plot.title=element_blank()) # weghalen witregel/titelregel numbers at risk table
+  km$table <- km$table + theme(plot.title=element_blank()) # remove white row above numbers at risk table
   print(km)
 
   if (save) {
-    png(filename, units = "cm", width=20, height=15, res=300)
+    png(filename, units = "cm", width=20, height=15, res=1200)
     print(km, newpage = FALSE)
     dev.off()
   }
